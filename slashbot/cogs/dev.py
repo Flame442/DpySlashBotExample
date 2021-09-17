@@ -48,6 +48,50 @@ class Dev(commands.Cog):
         print('\033[0;37;40m\nDone!')
         await ctx.send('Done.')
 
+    @commands.command()
+    async def setup(self, ctx, confirm=False):
+        if not confirm:
+            await ctx.send(
+                "Are you sure you want to register the example slash commands in this guild? "
+                "Do not do this if they are already registered.\n"
+                f"Run `{ctx.prefix}setup yes` to confirm."
+            )
+            return
+        payload = {
+            "name": "command",
+            "type": 1,
+            "description": "Example slash command",
+            "options": [
+                {
+                    "name": "member",
+                    "description": "A discord member",
+                    "type": 6,
+                    "required": False,
+                },
+            ]
+        }
+        await self.bot.http.upsert_guild_command(self.bot.user.id, ctx.guild.id, payload)
+        payload = {
+            "name": "group",
+            "type": 1,
+            "description": "Example slash group command",
+            "options": [
+                {
+                    "name": "command",
+                    "description": "Example slash group command",
+                    "type": 1,
+                    "options": [
+                        {
+                            "name": "member",
+                            "description": "A discord member",
+                            "type": 6,
+                            "required": False,
+                        },
+                    ]
+                },
+            ]
+        }
+        await self.bot.http.upsert_guild_command(self.bot.user.id, ctx.guild.id, payload)
 
 def setup(bot):
     bot.add_cog(Dev(bot))
