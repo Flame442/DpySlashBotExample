@@ -38,7 +38,7 @@ class SlashContext():
         self._defered = False # to be set by on_interaction
         self._lock = asyncio.Lock()
     
-    def send(self, content=None, **kwargs):
+    async def send(self, content=None, **kwargs):
         """Sends a message using the appropriate method in the given context."""
         if "content" in kwargs:
             content = kwargs["content"]
