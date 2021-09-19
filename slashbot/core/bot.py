@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 from slashbot.core import slash
+import asyncio
 
 
 class SlashBot(commands.AutoShardedBot):
@@ -58,6 +59,19 @@ class SlashBot(commands.AutoShardedBot):
         ctx.path = path
         if path in self.slash_commands:
             command = self.slash_commands[path]
-            await command.callback(command.cog, ctx, *args)
+            task = asyncio.create_task(command.callback(command.cog, ctx, *args))
+            # If 2s pass and there is no message sent yet, defer so the interaction doesn't fail
+            await asyncio.sleep(2)
+            async with ctx._lock:
+                if not ctx._interaction.response._responded:
+                    ctx._defered = True
+                    await ctx._interaction.response.defer()
+            try:
+                await task
+            except Exception as e:
+                # If we defered but the command errored, resolve it so it doesn't think forever
+                if ctx._defered:
+                    await ctx.send("The command encountered an error. Try again in a moment.")
+                raise e
         else:
             await ctx.send("That command is not available right now. Try again later.")

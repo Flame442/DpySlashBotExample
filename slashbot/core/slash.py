@@ -1,4 +1,5 @@
 import discord
+import asyncio
 from enum import Enum
 
 
@@ -16,6 +17,15 @@ class SlashOptions(Enum):
     NUMBER = 10 # any float between -2^53 and 2^53
 
 
+class SlashMessage():
+    def __init__(self, bot, interaction):
+        self.bot = bot
+        self.interaction = interaction
+    
+    def edit(self, **kwargs):
+        return self.interaction.edit_original_message(**kwargs)
+
+
 class SlashContext():
     """Drop in `ctx` replacement for a slash interactions."""
     def __init__(self, interaction):
@@ -25,16 +35,27 @@ class SlashContext():
         self.guild = interaction.guild
         self.channel = interaction.channel
         self.path = None # to be set by on_interaction
+        self._defered = False # to be set by on_interaction
+        self._lock = asyncio.Lock()
     
     def send(self, content=None, **kwargs):
-        """Only returns a `discord.Message` if this is not the first message sent."""
+        """Sends a message using the appropriate method in the given context."""
         if "content" in kwargs:
             content = kwargs["content"]
         # If we haven't responded to the interaction, this will send the message as an interaction response.
         # Otherwise, it will send it normally to the channel the command was sent in.
-        if self._interaction.response._responded:
-            return self.channel.send(content, **kwargs)
-        return self._interaction.response.send_message(content=content, **kwargs)
+        async with self._lock:
+            if self._interaction.response._responded:
+                # If the command handler defered this message, we need to edit the message, not send a new one.
+                if self._defered:
+                    self._defered = False
+                    await self._interaction.edit_original_message(content=content, **kwargs)
+                    return SlashMessage(self.bot, self._interaction)
+                # We already sent a response to the interaction, just send a new message to the channel.
+                return await self.channel.send(content, **kwargs)
+            # We need to respond to the interaction, send this message as that response.
+            await self._interaction.response.send_message(content=content, **kwargs)
+            return SlashMessage(self.bot, self._interaction)
 
 
 class SlashMember():
@@ -113,7 +134,7 @@ def recursive_options(options: list, resolved: dict, path: list, guild):
             if "options" in option:
                 return recursive_options(option["options"], resolved, path, guild)
         elif option_type == SlashOptions.STRING:
-            args.append(option["value"])
+            args.append(option["value"].strip())
         elif option_type == SlashOptions.INTEGER:
             args.append(int(option["value"]))
         elif option_type == SlashOptions.BOOLEAN:
