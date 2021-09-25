@@ -64,7 +64,6 @@ class SlashBot(commands.AutoShardedBot):
             await asyncio.sleep(2)
             async with ctx._lock:
                 if not ctx._interaction.response._responded:
-                    ctx._defered = True
                     await ctx._interaction.response.defer()
             try:
                 await task

@@ -35,7 +35,6 @@ class SlashContext():
         self.guild = interaction.guild
         self.channel = interaction.channel
         self.path = None # to be set by on_interaction
-        self._defered = False # to be set by on_interaction
         self._lock = asyncio.Lock()
     
     async def send(self, content=None, **kwargs):
@@ -46,13 +45,8 @@ class SlashContext():
         # Otherwise, it will send it normally to the channel the command was sent in.
         async with self._lock:
             if self._interaction.response._responded:
-                # If the command handler defered this message, we need to edit the message, not send a new one.
-                if self._defered:
-                    self._defered = False
-                    await self._interaction.edit_original_message(content=content, **kwargs)
-                    return SlashMessage(self.bot, self._interaction)
-                # We already sent a response to the interaction, just send a new message to the channel.
-                return await self.channel.send(content, **kwargs)
+                # We already sent a response to the interaction, just send a followup.
+                return await self._interaction.followup.send(content, wait=True, **kwargs)
             # We need to respond to the interaction, send this message as that response.
             await self._interaction.response.send_message(content=content, **kwargs)
             return SlashMessage(self.bot, self._interaction)
