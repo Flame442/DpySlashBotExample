@@ -17,39 +17,45 @@ class SlashOptions(Enum):
     NUMBER = 10 # any float between -2^53 and 2^53
 
 
-class SlashMessage():
-    def __init__(self, bot, interaction):
-        self.bot = bot
-        self.interaction = interaction
-    
-    def edit(self, **kwargs):
-        return self.interaction.edit_original_message(**kwargs)
+class CommandType(Enum):
+    """Stores the type of command."""
+    SLASH = 1
+    USER = 2
+    MESSAGE = 3
 
 
 class SlashContext():
     """Drop in `ctx` replacement for a slash interactions."""
-    def __init__(self, interaction):
+    def __init__(self, interaction, bot):
         self._interaction = interaction
         self.author = interaction.user
         self.message = interaction.message
         self.guild = interaction.guild
         self.channel = interaction.channel
+        self.bot = bot
+        self.created_at = discord.Object(interaction.id).created_at
+        if self.guild is not None:
+            gid = self.guild.id
+        else:
+            gid = "@me"
+        self.jump_url = f"https://discord.com/channels/{gid}/{self.channel.id}/{self._interaction.id}"
         self.path = None # to be set by on_interaction
-        self._lock = asyncio.Lock()
+        self.args = None # to be set by on_interaction
+        self._created_at = time.time()
     
     async def send(self, content=None, **kwargs):
         """Sends a message using the appropriate method in the given context."""
         if "content" in kwargs:
             content = kwargs["content"]
-        # If we haven't responded to the interaction, this will send the message as an interaction response.
-        # Otherwise, it will send it normally to the channel the command was sent in.
-        async with self._lock:
-            if self._interaction.response._responded:
-                # We already sent a response to the interaction, just send a followup.
-                return await self._interaction.followup.send(content, wait=True, **kwargs)
-            # We need to respond to the interaction, send this message as that response.
-            await self._interaction.response.send_message(content=content, **kwargs)
-            return SlashMessage(self.bot, self._interaction)
+        # The followup token is expiring soon, just send to the channel.
+        if self._created_at + (60 * 12) < time.time():
+            return await self.channel.send(content, **kwargs)
+        # We already sent a response to the interaction, send a followup instead.
+        try:
+            return await self._interaction.followup.send(content, wait=True, **kwargs)
+        # The token expired probably? Just send to the channel...
+        except discord.HTTPException:
+            return await self.channel.send(content, **kwargs)
 
 
 class SlashMember():
@@ -70,13 +76,14 @@ class SlashMember():
 
 class SlashCommand():
     """A command object for a slash command."""
-    def __init__(self, func, path):
+    def __init__(self, func, path, aliases):
         self.path = path
+        self.aliases = aliases
         self.callback = func
         self.cog = None # to be set in add_cog
 
 
-def command(path=None):
+def command(path=None, aliases=[]):
     """
     A decorator that can be added to async functions to make them slash commands.
     
@@ -97,18 +104,36 @@ def command(path=None):
     The `path` parameter can be used to denote the command path to use,
     if not provided it defaults to
     `command_subcommand_subcommand` -> `("command", "subcommand", "subcommand")`
+    
+    The `alias` parameter is a currently hacky way to support user and message commands,
+    the single-deep name of the user/message command should be provided as a single element tuple.
+    ie `@slash.command(aliases=[("Ban User",)])`
     """
     def wrapper(func):
         # Without this line, `path` is not properly defined. Thanks python.
         nonlocal path
         if path is None:
             path = tuple(func.__name__.split("_"))
-        return SlashCommand(func, path)
+        return SlashCommand(func, path, aliases)
     return wrapper
 
 def prepare_args(interaction):
     """Resolves the raw argument data provided into objects."""
     path = [interaction.data["name"]]
+    command_type = CommandType(interaction.data["type"])
+    if command_type == CommandType.USER:
+        target_id = interaction.data["target_id"]
+        user_data = interaction.data["resolved"]["users"][target_id]
+        mem_data = interaction.data["resolved"]["members"][target_id]
+        mem = SlashMember(
+            interaction.guild,
+            int(target_id),
+            user_data["username"],
+            user_data["discriminator"],
+            mem_data["nick"],
+            discord.Permissions(int(mem_data["permissions"])),
+        )
+        return [mem], tuple(path)
     # There are no args or subcommands
     if "options" not in interaction.data:
         return [], tuple(path)
@@ -128,7 +153,7 @@ def recursive_options(options: list, resolved: dict, path: list, guild):
             if "options" in option:
                 return recursive_options(option["options"], resolved, path, guild)
         elif option_type == SlashOptions.STRING:
-            args.append(option["value"].strip())
+            args.append(option["value"])
         elif option_type == SlashOptions.INTEGER:
             args.append(int(option["value"]))
         elif option_type == SlashOptions.BOOLEAN:

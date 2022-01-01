@@ -35,6 +35,8 @@ class SlashBot(commands.AutoShardedBot):
             if isinstance(item, slash.SlashCommand):
                 item.cog = cog
                 self.slash_commands[item.path] = item
+                for alias in item.aliases:
+                    self.slash_commands[alias] = item
         
     def remove_cog(self, name):
         removed_cog = super().remove_cog(name)
@@ -54,23 +56,15 @@ class SlashBot(commands.AutoShardedBot):
         if not interaction.guild:
             return
         
-        ctx = slash.SlashContext(interaction)
+        ctx = slash.SlashContext(self, interaction)
+
         args, path = slash.prepare_args(interaction)
         ctx.path = path
-        if path in self.slash_commands:
-            command = self.slash_commands[path]
-            task = asyncio.create_task(command.callback(command.cog, ctx, *args))
-            # If 2s pass and there is no message sent yet, defer so the interaction doesn't fail
-            await asyncio.sleep(2)
-            async with ctx._lock:
-                if not ctx._interaction.response._responded:
-                    await ctx._interaction.response.defer()
-            try:
-                await task
-            except Exception as e:
-                # If we defered but the command errored, resolve it so it doesn't think forever
-                if ctx._defered:
-                    await ctx.send("The command encountered an error. Try again in a moment.")
-                raise e
-        else:
+        if path not in self.slash_commands:
             await ctx.send("That command is not available right now. Try again later.")
+        command = self.slash_commands[path]
+        await ctx._interaction.response.defer()
+        try:
+            await command.callback(command.cog, ctx, *args)
+        except Exception as e:
+            await ctx.send("`The command encountered an error. Try again in a moment.`")
