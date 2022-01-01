@@ -54,14 +54,16 @@ class SlashBot(commands.AutoShardedBot):
             return
         # Only accept interactions that occurred in a guild
         if not interaction.guild:
+            await interaction.response.send_message(content="Commands cannot be used in DMs.")
             return
         
         ctx = slash.SlashContext(self, interaction)
-
         args, path = slash.prepare_args(interaction)
         ctx.path = path
         if path not in self.slash_commands:
-            await ctx.send("That command is not available right now. Try again later.")
+            await interaction.response.send_message(content="That command is not available right now. Try again later.", ephemeral=True)
+            return
+        
         command = self.slash_commands[path]
         await ctx._interaction.response.defer()
         try:
