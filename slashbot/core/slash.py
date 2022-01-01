@@ -1,6 +1,7 @@
 import discord
 import asyncio
 from enum import Enum
+import time
 
 
 class SlashOptions(Enum):
