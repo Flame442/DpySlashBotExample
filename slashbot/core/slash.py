@@ -26,7 +26,7 @@ class CommandType(Enum):
 
 class SlashContext():
     """Drop in `ctx` replacement for a slash interactions."""
-    def __init__(self, interaction, bot):
+    def __init__(self, bot, interaction):
         self._interaction = interaction
         self.author = interaction.user
         self.message = interaction.message
