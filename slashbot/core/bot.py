@@ -2,6 +2,7 @@ import discord
 from discord.ext import commands
 from slashbot.core import slash
 import asyncio
+import logging
 
 
 class SlashBot(commands.AutoShardedBot):
@@ -20,6 +21,7 @@ class SlashBot(commands.AutoShardedBot):
         )
         self.token = "your_token_here"
         self.slash_commands = {}
+        self.logger = logging.getLogger("slashbot")
 
     async def on_ready(self):
         print("Ready!")
@@ -70,3 +72,4 @@ class SlashBot(commands.AutoShardedBot):
             await command.callback(command.cog, ctx, *args)
         except Exception as e:
             await ctx.send("`The command encountered an error. Try again in a moment.`")
+            self.logger.exception(f"Error in command {ctx.path}")
