@@ -48,8 +48,8 @@ class Dev(commands.Cog):
         print('\033[0;37;40m\nDone!')
         await ctx.send('Done.')
 
-    @commands.command()
-    async def setup(self, ctx, confirm=False):
+    @commands.command(name="setup")
+    async def setup_command(self, ctx, confirm=False):
         if not confirm:
             await ctx.send(
                 "Are you sure you want to register the example slash commands in this guild? "
